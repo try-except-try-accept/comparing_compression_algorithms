@@ -407,18 +407,19 @@ def validate_filename(fn, ext=None):
 
 ############################################
 
-def validate_text(text):
-     return all([ord(i) in range(0, 127) for i in text]) # don't allow final ASCII char (special use)
+def sanitise_text(text):
+     sanitised = "".join([t for t in text if ord(t) in range(0, 127)])
+     if text != sanitised:
+          print("Non ASCII chars detected - I have removed these from your data.")
+     return sanitised
+
 
 ############################################
 
 def get_text_from_console():
      print("Enter text to compress...")
      text = input()
-     while not validate_text(text):
-          text = input("Enter ASCII characters only:\n")
-
-     return text
+     return sanitise_text(text)
 
 ############################################
 
@@ -427,7 +428,7 @@ def get_text_from_file():
           
      fn_valid = False
      text_valid = False
-     while not (fn_valid and text_valid):               
+     while not (fn_valid):               
           fn = input("Enter a valid filename:\n")
                
           fn_valid = validate_filename(fn, ext=[".txt"])
@@ -436,11 +437,9 @@ def get_text_from_file():
           
           with open(fn) as f:
                text = f.read()
-          text_valid = validate_text(text)
-          
-          if not text_valid:
-               print("Sorry, I can only understand plain ASCII characters 0 - 126 inclusive.")
                
+          text = sanitise_text(text)
+          
      return text
 
 ############################################
@@ -462,7 +461,7 @@ def compress():
 
      word_level = 0
      if choice == "2":
-          raw_data = text.strip().split(" ")
+          raw_data = [i for i in text.strip().split(" ") if i != ""]
           word_level = 1
      else:
           raw_data = text.strip()
