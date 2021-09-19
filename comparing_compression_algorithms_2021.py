@@ -50,12 +50,14 @@ def binarise_huff_table(code_map, word_level):
      for value, encoding in code_map.items():
           #print(value, encoding)
 
-          char_code = bin(ord(value))[2:].zfill(ASCII_LENGTH)
+          
           if word_level == 0:
+               char_code = bin(ord(value))[2:].zfill(ASCII_LENGTH)
                table += char_code           # character-mode...  represent ASCII character in 7 bits
                #print(f"added code {char_code} for {value}")
           else:                                                       
                for char in value:                                          # in word-mode...
+                    char_code = bin(ord(char))[2:].zfill(ASCII_LENGTH)
                     table += char_code        # each char is 7 bits
                table += bin(EOW)[2:]                                       # end with EOW marker.
 
@@ -111,7 +113,7 @@ def debinarise_huff_table(data, word_level):
                current_chunk_type = 2
 
           else:
-               code_map[chunk] = value
+               code_map[chunk] = value + " " if word_level else ""
                value = ""
                current_chunk_type = 0
      #print(code_map)    
