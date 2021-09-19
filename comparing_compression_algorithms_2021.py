@@ -103,9 +103,7 @@ def compress_huff(data, word_level):
      node_list = sorted(node_list)
 
      while len(node_list) > 1:                    # until we just have the root node left
-          for n in node_list:
-               print(n)
-          input()
+          print(node_list)
           first = node_list.pop(0)                # take the two least-frequency nodes
           second = node_list.pop(0)
           parent = Node(first.freq + second.freq) # combine frequency to make a parent node
@@ -116,23 +114,40 @@ def compress_huff(data, word_level):
           
 
      root = node_list[0]
-     traverse(root)
+     char_map = {}
+     char_map = traverse(root, char_map)
+
+     print(char_map)
 
 
-def traverse(tree, depth=0):
+def traverse(tree, char_map, path="", depth=0):
 
-     if tree is None:
-          return
+     buffer = depth*"\t"
 
+     if tree.value:
+          print(buffer, "Found a leaf - path was", path)
+          
+          char_map[tree.value] = path
+          path = ""
+
+     
      print(depth*"\t", tree)
 
      depth += 1
-     
-     print(depth*"\t", "Connected on the left to...")
-     traverse(tree.left, depth)
 
-     print(depth*"\t", "Connected on the right to...")
-     traverse(tree.right, depth)
+
+     if tree.left is not None:
+          print(buffer, "Connected on the left to...")
+          lpath = path + "1"
+          char_map = traverse(tree.left, char_map, lpath, depth)
+
+     
+     if tree.right is not None:
+          print(buffer, "Connected on the right to...")
+          rpath =  path + "0"
+          char_map = traverse(tree.right, char_map, rpath, depth)
+
+     return char_map
 
           
           
@@ -331,4 +346,4 @@ Enter 2 to load a file and decompress.""")
 if __name__ == "__main__":
 
      #main()
-     compress_huff("every elephant like to eat elementalle cheese", 0)
+     compress_huff("pineapple", 0)
