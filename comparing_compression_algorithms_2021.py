@@ -429,16 +429,13 @@ def get_text_from_file():
      fn_valid = False
      text_valid = False
      while not (fn_valid):               
-          fn = input("Enter a valid filename:\n")
-               
+          fn = input("Enter a valid filename:\n")               
           fn_valid = validate_filename(fn, ext=[".txt"])
-          if not fn_valid:
-               continue
           
-          with open(fn) as f:
-               text = f.read()
+     with open(fn) as f:
+          text = f.read()
                
-          text = sanitise_text(text)
+     text = sanitise_text(text)
           
      return text
 
