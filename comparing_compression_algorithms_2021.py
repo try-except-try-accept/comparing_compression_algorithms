@@ -1,6 +1,7 @@
 from os import path, getcwd
 from math import log, ceil
 from collections import Counter
+from timeit import default_timer
 
 # .rle files
 ##########################
@@ -43,6 +44,51 @@ from collections import Counter
 # remaining bits represent the payload data
 
 
+
+EOW = 0x7f
+ACCEPTED_FN_SPECIAL = [".", "_", "-"]
+ACCEPTED_EXT = [".ascii", ".rle", ".huff"]
+ASCII_LENGTH = 7
+TYPE_OR_LOAD = """Enter 1 to type in text
+Enter 2 to load text from file
+"""
+COMPRESS_OR_DECOMPRESS = """Enter 1 to enter text, compress, and save to file.
+Enter 2 to load a file and decompress.
+"""
+CHARACTER_OR_WORD = """Enter 1 for character-level compression
+Enter 2 for word-level compression
+"""
+
+
+
+class MyTimer(object):
+     """Timer object context manager to time process speed"""
+     def __enter__(self):
+          self.start = default_timer()
+     def __exit__(self, type, value, traceback):
+          self.end = default_timer()          
+          print(f"That took {self.end-self.start} seconds.\n")
+
+
+class Node:
+     """Representation of a huffman tree node - sortable according to frequency"""
+     def __init__(self, freq=0, value=None):
+          self.left = None
+          self.right = None
+          self.freq = freq
+          self.value = value
+
+     def __repr__(self):
+          return f"Frequency: {self.freq}   Value: {self.value}"
+
+     def __lt__(self, other):
+          if self.freq == other.freq:    # combined freq nodes take precedence
+               if self.value is None:
+                    return True
+          
+          return self.freq < other.freq
+     
+
 def binarise_huff_table(code_map, word_level):
 
      table = ""
@@ -54,7 +100,7 @@ def binarise_huff_table(code_map, word_level):
           if word_level == 0:
                char_code = bin(ord(value))[2:].zfill(ASCII_LENGTH)
                table += char_code           # character-mode...  represent ASCII character in 7 bits
-               #print(f"added code {char_code} for {value}")
+               
           else:                                                       
                for char in value:                                          # in word-mode...
                     char_code = bin(ord(char))[2:].zfill(ASCII_LENGTH)
@@ -120,19 +166,18 @@ def debinarise_huff_table(data, word_level):
      return code_map
           
 
-EOW = 0x7f
-ACCEPTED_FN_SPECIAL = [".", "_", "-"]
-ACCEPTED_EXT = [".ascii", ".rle", ".huff"]
-ASCII_LENGTH = 7
 
 
 def decompress_rle(data):
-     #print("Decompressing RLE data...")
+     print("Decompressing RLE data...")
+     #print(data)\
+     
 
      freq_or_val = 1                                   # expect frequency first
 
-     mode = int(data[0])                               # if mode is 0 alternate frequency/value every chunk
+     word_level = int(data[0])                               # if mode is 0 alternate frequency/value every chunk
      freq_length = int(data[1:9], 2)                   # expect this many bits for each frequency
+     #print(freq_length, "is the freq length")
      data = data[9:]                                   # payload starts from here
      bit_lengths = [ASCII_LENGTH, freq_length]         # value bit length, frequency bit length
 
@@ -144,6 +189,7 @@ def decompress_rle(data):
           expected_bits = bit_lengths[freq_or_val]     # look at this many bits
           chunk = data[:expected_bits]                 
           data = data[expected_bits:]                  # remove from the bit stream
+          #print(chunk)
           
           if freq_or_val:
                output += freq * run                   # end of last run
@@ -157,32 +203,20 @@ def decompress_rle(data):
                     run += chr(int(chunk, 2))         # chunk must be a character
 
                
-          if not mode or freq_or_val or delimiter:    # get ready for next frequency?             
+          if not word_level or freq_or_val or delimiter:    # get ready for next frequency?             
                freq_or_val ^= 1
+
+     if word_level:
+          run += " "
 
      output += freq * run
                
      #print("output is")
-     #print(output)
+     print(output)
 
           
                
-class Node:
-     def __init__(self, freq=0, value=None):
-          self.left = None
-          self.right = None
-          self.freq = freq
-          self.value = value
 
-     def __repr__(self):
-          return f"Frequency: {self.freq}   Value: {self.value}"
-
-     def __lt__(self, other):
-          if self.freq == other.freq:    # combined freq nodes take precedence
-               if self.value is None:
-                    return True
-          
-          return self.freq < other.freq
 
 
      
@@ -265,15 +299,17 @@ def decompress_huffman(data):
 
      value = ""
 
+     output = ""
+
      for bit in payload:
 
           value += bit
 
           if value in code_map:
-               print(code_map[value], end="")
+               output += code_map[value]
                value = ""
           
-               
+     print(output)
 
 
 def traverse(tree, code_map, path="", depth=0):
@@ -324,7 +360,7 @@ def traverse(tree, code_map, path="", depth=0):
 
 def compress_rle(data, word_level):
      print("Compressing text using run length encoding.")
-
+     
      
      freq_pairs = []
      count = 0
@@ -336,6 +372,8 @@ def compress_rle(data, word_level):
                if word_level:
                     last_chunk.append(EOW)
                freq_pairs.append([last_chunk, count])
+               
+
                count = 1
           else:
                count += 1
@@ -352,7 +390,7 @@ def compress_rle(data, word_level):
      #print("The highest frequency was:", highest_freq)
      #print("The highest value was:", highest_value)
 
-     freq_bit_length = ceil(log(highest_freq, 2))
+     freq_bit_length = len(bin(highest_freq)[2:])
      
 
      output = [word_level, freq_bit_length]
@@ -382,6 +420,8 @@ def compress_rle(data, word_level):
 
           final.append(bin(b)[2:].zfill(fill))
 
+
+
      #print(final)
 
      return final
@@ -407,12 +447,12 @@ def write_binary(data, fn):
 
      size = path.getsize(getcwd()+"/"+fn)
 
-     print(f"\nSaved file {fn}. Total size: {size} bytes.\n")
+     print(f"\nSaved file {fn} - total size: {size} bytes.\n")
           
                
 
 
-def valid_filename(fn, ext=False):
+def valid_filename(fn, ext=None):
           
      for c in fn:
           if not any([c.isalpha(), c.isdigit(), c in ACCEPTED_FN_SPECIAL]):
@@ -420,8 +460,8 @@ def valid_filename(fn, ext=False):
                return False
 
      if ext:
-          if not any(fn.endswith(extension) for extension in ACCEPTED_EXT):
-               print("Sorry, I can only load .ascii, .rle and .huff files.")
+          if not any(fn.endswith(extension) for extension in ext):
+               print("Sorry, I can only load {} files.".format(", ".join(ext)))
                return False
      elif path.exists(getcwd()+"/"+fn):
           x = input("File already exists, enter any key to overwrite: ")
@@ -435,66 +475,105 @@ def valid_filename(fn, ext=False):
 def valid_text(text):
      return all([ord(i) in range(0, 127) for i in text]) # don't allow final ASCII char (special use)
 
-def compress():
-     print("Enter text to compress...")
 
+def get_text_from_console():
+     print("Enter text to compress...")
      text = input()
      while not valid_text(text):
           text = input("Enter ASCII characters only:\n")
 
-     print("Enter filename to save under...")
+     return text
 
+def get_text_from_file():
+     print("Enter filename to load from...")
+          
+     fn_valid = False
+     text_valid = False
+     while not (fn_valid and text_valid):               
+          fn = input("Enter a valid filename:\n")
+               
+          fn_valid = valid_filename(fn, ext=[".txt"])
+          if not fn_valid:
+               continue
+          
+          with open(fn) as f:
+               text = f.read()
+          text_valid = valid_text(text)
+          
+          if not text_valid:
+               print("Sorry, I can only understand plain ASCII characters 0 - 126 inclusive.")
+               
+     return text
+
+
+
+
+def compress():
+     choice = input(TYPE_OR_LOAD)
+     if choice == "1":
+          text = get_text_from_console()
+     else:
+          text = get_text_from_file()
+          
+
+     print("Enter filename to save under...")
      fn = input()
      while not valid_filename(fn):
           fn = input("Enter a valid filename:\n")
-          
-##
-##     convert_funcs
-##               
-##     data = raw_ascii(data)
 
-     x = input("""Enter 1 for character-level compression
-Enter 2 for word-level compression""")
+     choice = input(CHARACTER_OR_WORD)
 
      word_level = 0
-     if x == "2":
-          raw_data = text.split(" ")
+     if choice == "2":
+          raw_data = text.strip().split(" ")
           word_level = 1
      else:
-          raw_data = text
+          raw_data = text.strip()
 
-          
-     compressed_data = compress_rle(raw_data, word_level)
-     write_binary(compressed_data, fn+".rle")
 
-     compressed_data = compress_huffman(raw_data, word_level)
-     write_binary(compressed_data, fn+".huff")
+     
 
-     ascii_data = save_raw_ascii(text)
-     write_binary(ascii_data, fn+".ascii")
-     #data = huffman(data)
-
+     with MyTimer() as t:
+          compressed_data = compress_rle(raw_data, word_level)
+          write_binary(compressed_data, fn+".rle")
+     
+     with MyTimer() as t:
+          compressed_data = compress_huffman(raw_data, word_level)
+          write_binary(compressed_data, fn+".huff")
+     
+     with MyTimer() as t:
+          ascii_data = save_raw_ascii(text)
+          write_binary(ascii_data, fn+".ascii")
+     
+     
+     
 
 def decompress():
      print("Enter filename to load from...")
      fn = input()
-     while not valid_filename(fn, ext=True):
+     while not valid_filename(fn, ext=ACCEPTED_EXT):
           fn = input("Enter a valid filename:\n")
           
      with open(fn) as f:
           data = f.read()
 
      if fn.endswith(".rle"):
-          decompress_rle(data)
+          with MyTimer() as t:
+               decompress_rle(data)
+               
      elif fn.endswith(".ascii"):
-          load_raw_ascii(data)
+          with MyTimer() as t:   
+               load_raw_ascii(data)
+               
      else:
-          decompress_huffman(data)
+          with MyTimer() as t:               
+               decompress_huffman(data)
+          
+          
 
 def main():
 
-     x = input("""Enter 1 to enter text, compress, and save to file.
-Enter 2 to load a file and decompress.""")
+     x = input(COMPRESS_OR_DECOMPRESS)
 
      if x == "1":
           compress()
