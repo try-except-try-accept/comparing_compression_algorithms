@@ -17,14 +17,15 @@ from collections import Counter
 
 # .ascii files
 #########################
-# each ceil bits represents a single ASCII character
+# each 7  bits represents a single ASCII character
 
 # .huff files
 #########################
-# first bit dictates if word-level compressions was used (1) or character-level (0) - M
-# the next byte represents the length of the huffman table in bits
+# first bit dictates if word-level compression was used (1) or character-level (0) - M
+# the next byte represents how many bytes will be used to store the table length - X
+# the next X bytes represent the length of the huffman table in bits
 
-# next section represents the huffman table used
+# next section represents the huffman table used - supports max frequency of 255.
 
 # if M is 0
      # next 7 bits represent the character
@@ -47,20 +48,27 @@ def binarise_huff_table(code_map, word_level):
      table = ""
 
      for value, encoding in code_map.items():
+          #print(value, encoding)
+
+          char_code = bin(ord(value))[2:].zfill(ASCII_LENGTH)
+          if word_level == 0:
+               table += char_code           # character-mode...  represent ASCII character in 7 bits
+               #print(f"added code {char_code} for {value}")
+          else:                                                       
+               for char in value:                                          # in word-mode...
+                    table += char_code        # each char is 7 bits
+               table += bin(EOW)[2:]                                       # end with EOW marker.
 
           
-          if word_level == 0:
-               table += bin(value)[2:].zfill(ASCII_LENGTH)            # character-mode...  represent ASCII character in 7 bits
-          else:                                                       
-               for char in value:                                     # in word-mode...
-                    table += bin(ord(char))[2:].zfill(ASCII_LENGTH)   # each char is 7 bits
-               table += bin(EOW)[2:]                                  # end with EOW marker.
-                    
-               
-          table += bin(len(encoding))[2:].zfill(8)                    # next byte stores the pattern length
-          table += encoding                                           # next P bits stores the pattern
+          patt_length = bin(len(encoding))[2:].zfill(8)
+          table += patt_length                         # next byte stores the pattern length
+          #print(f"added pattern length  {patt_length} for {encoding}")
+          table += encoding                                                # next P bits stores the pattern
+          #print(f"added encoding")
 
-     return bin(len(table))[2:].zfill(8) + table                      # express bit length of table in one byte, follow this with the table
+          
+
+     return table                           # express bit length of table in one byte, follow this with the table
 
 
 def debinarise_huff_table(data, word_level):
@@ -74,19 +82,15 @@ def debinarise_huff_table(data, word_level):
      code_map = {}
 
      value = ""
-
-     table_length = data[:8]
-
-     data = data[8:]
-     
+    
      while len(data):
-          expected_bits = bit_lengths[current_chunk_type]     # look at this many bits
-          print(f"I'm looking for {expected_bits} because chunk type is {current_chunk_type}")
+          expected_bits = bit_lengths[current_chunk_type]                  # look at this many bits
+          #print(f"I'm looking for {expected_bits} because chunk type is {current_chunk_type}")
           chunk = data[:expected_bits]                 
-          data = data[expected_bits:]                         # remove from the bit stream
+          data = data[expected_bits:]                                      # remove from the bit stream
 
 
-          print(chunk)
+          #print(chunk)
           chunk_as_char = chr(int(chunk, 2))
 
           if current_chunk_type == 0:
@@ -95,22 +99,22 @@ def debinarise_huff_table(data, word_level):
                     current_chunk_type = 1
                else:
                     if chunk_as_char == chr(EOW):
-                         print("EOW found")
+                         #print("EOW found")
                          current_chunk_type = 1
                     else:
                          value += chunk_as_char
 
           elif current_chunk_type == 1:
                pattern_length = int(chunk, 2)
-               print("pattern length is", pattern_length)
+               #print("pattern length is", pattern_length)
                bit_lengths[-1] = pattern_length
                current_chunk_type = 2
 
           else:
-               code_map[value] = chunk
+               code_map[chunk] = value
                value = ""
                current_chunk_type = 0
-               
+     #print(code_map)    
      return code_map
           
 
@@ -121,6 +125,7 @@ ASCII_LENGTH = 7
 
 
 def decompress_rle(data):
+     #print("Decompressing RLE data...")
 
      freq_or_val = 1                                   # expect frequency first
 
@@ -155,8 +160,8 @@ def decompress_rle(data):
 
      output += freq * run
                
-     print("output is")
-     print(output)
+     #print("output is")
+     #print(output)
 
           
                
@@ -182,7 +187,7 @@ class Node:
 
      
 
-def compress_huff(data, word_level):
+def compress_huffman(data, word_level):
      print("Compressing text using huffman encoding.")
 
      node_list = [Node(freq_val[1], freq_val[0]) for freq_val in Counter(data).items()]
@@ -194,7 +199,7 @@ def compress_huff(data, word_level):
      node_list = sorted(node_list)
 
      while len(node_list) > 1:                    # until we just have the root node left
-          print(node_list)
+          #print(node_list)
           first = node_list.pop(0)                # take the two least-frequency nodes
           second = node_list.pop(0)
           parent = Node(first.freq + second.freq) # combine frequency to make a parent node
@@ -210,13 +215,63 @@ def compress_huff(data, word_level):
 
      table_encoding = binarise_huff_table(code_map, word_level)
 
-     header = [word_level, bin(len(huff_binary))[2:].zfill(8), table_encoding]
+     #print("table length is", len(table_encoding))
 
-     payload = ["".join(char_map[item] for item in data)]
+     table_length_bits = bin(len(table_encoding))[2:]
+
+     bytes_to_store_table_length = ceil(len(table_length_bits) / 8)
+
+     table_length_bits = table_length_bits.zfill(bytes_to_store_table_length * 8)
+
+     header = [str(word_level), bin(bytes_to_store_table_length)[2:].zfill(8), table_length_bits, table_encoding]
+
+     payload = ["".join(code_map[item] for item in data)]
 
      return header + payload
 
+
+def decompress_huffman(data):
+
+     MODE = 0
+     TL_BYTE_START = 1
+     TABLE_LENGTH_START = 9
      
+     
+     print("Decompressing huffman encoded data...")
+
+     #print("Data is:", data)
+     
+     mode = int(data[0])
+     #print("Mode is", mode)     
+     table_length_bytes = int(data[TL_BYTE_START:TABLE_LENGTH_START], 2)
+     #print(f"There are {table_length_bytes} bytes being used to store the table length")
+
+     table_length_end = TABLE_LENGTH_START+(table_length_bytes*8)
+
+     table_length = int(data[TABLE_LENGTH_START:table_length_end], 2)
+     #print(f"The table length is {table_length}")
+
+     table_start = table_length_end
+     table_end = table_length_end + table_length
+     
+     table = data[table_start:table_end]
+     #print("Table is", table)
+     payload = data[table_end:]
+     #print("Payload is", payload)
+
+     code_map = debinarise_huff_table(table, mode)
+
+     value = ""
+
+     for bit in payload:
+
+          value += bit
+
+          if value in code_map:
+               print(code_map[value], end="")
+               value = ""
+          
+               
 
 
 def traverse(tree, code_map, path="", depth=0):
@@ -224,25 +279,25 @@ def traverse(tree, code_map, path="", depth=0):
      buffer = depth*"\t"
 
      if tree.value:
-          print(buffer, "Found a leaf - path was", path)
+          #print(buffer, "Found a leaf - path was", path)
           
           code_map[tree.value] = path
           path = ""
 
      
-     print(depth*"\t", tree)
+     #print(depth*"\t", tree)
 
      depth += 1
 
 
      if tree.left is not None:
-          print(buffer, "Connected on the left to...")
+          #print(buffer, "Connected on the left to...")
           lpath = path + "1"
           char_map = traverse(tree.left, code_map, lpath, depth)
 
      
      if tree.right is not None:
-          print(buffer, "Connected on the right to...")
+          #print(buffer, "Connected on the right to...")
           rpath =  path + "0"
           char_map = traverse(tree.right, code_map, rpath, depth)
 
@@ -292,8 +347,8 @@ def compress_rle(data, word_level):
      highest_freq = max(freq_pairs, key=lambda x: x[1])[1]
      highest_value = len(max(freq_pairs, key=lambda x: len(x[0])))
 
-     print("The highest frequency was:", highest_freq)
-     print("The highest value was:", highest_value)
+     #print("The highest frequency was:", highest_freq)
+     #print("The highest value was:", highest_value)
 
      freq_bit_length = ceil(log(highest_freq, 2))
      
@@ -308,7 +363,7 @@ def compress_rle(data, word_level):
                output.append(char)
 
 
-     print(output)
+     #print(output)
 
      
      final = []
@@ -318,14 +373,14 @@ def compress_rle(data, word_level):
           elif i == 1:
                fill = 8                 # second item decides freq bit length - one byte
           elif type(b) == str:
-               fill = ASCII_LENGTH      # ASCII char values to use ceil bits each
+               fill = ASCII_LENGTH      # ASCII char values to use 7 bits each
                b = ord(b)
           else:
                fill = freq_bit_length   # frequency notation bits decided by max frequency
 
           final.append(bin(b)[2:].zfill(fill))
 
-     print(final)
+     #print(final)
 
      return final
           
@@ -343,7 +398,7 @@ def load_raw_ascii(data):
 def write_binary(data, fn):
      with open(fn, "w") as f:
           for chunk in data:
-               print(chunk, end="")
+               #print(chunk, end="")
                f.write(chunk)
 
      print()
@@ -410,7 +465,7 @@ Enter 2 for word-level compression""")
      compressed_data = compress_rle(raw_data, word_level)
      write_binary(compressed_data, fn+".rle")
 
-     compressed_data = compress_huff(raw_data, word_level)
+     compressed_data = compress_huffman(raw_data, word_level)
      write_binary(compressed_data, fn+".huff")
 
      ascii_data = save_raw_ascii(text)
@@ -431,6 +486,8 @@ def decompress():
           decompress_rle(data)
      elif fn.endswith(".ascii"):
           load_raw_ascii(data)
+     else:
+          decompress_huffman(data)
 
 def main():
 
@@ -444,10 +501,10 @@ Enter 2 to load a file and decompress.""")
 
 if __name__ == "__main__":
 
-     #main()
+     main()
      #compress_huff("pineapple", 0)
 
-     x = binarise_huff_table({"hello":"01100", "goodbye":"1110"}, 1)
-     print(x)
-     a = debinarise_huff_table(x, 1)
-     print(a)
+     #x = binarise_huff_table({"hello":"01100", "goodbye":"1110"}, 1)
+     ##print(x)
+     #a = debinarise_huff_table(x, 1)
+     ##print(a)
